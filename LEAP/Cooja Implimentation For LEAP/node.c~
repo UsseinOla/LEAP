@@ -1,0 +1,306 @@
+#include "contiki.h"
+#include "lib/list.h"
+#include "lib/memb.h"
+#include "lib/random.h"
+#include "net/rime.h"
+#include <stdio.h>
+#include "dev/leds.h"
+#include "node-id.h"
+#include "functions.h"
+char buffer[80];
+/* This structure holds information about neighbors. */
+struct neighbor {
+  struct neighbor *next;
+  rimeaddr_t addr;
+};
+rimeaddr_t next_hop; uint8_t nbr_hop;
+/* This structure holds information about anchor. */
+struct anchor {
+   uint8_t type;
+   uint8_t  id;
+   float  x;
+   float  y;
+   uint8_t  hop_count;
+   float Av_Hop_Size;
+  } anchor; 
+struct anchor *anc;
+
+struct AncAvHopSize {
+   uint8_t type;
+   uint8_t  id;
+   float Av_Hop_Size;
+  } AncAvHopSize;
+struct AncAvHopSize *avh;
+struct AncAvHopSize current_AncAvHopSize;int avhopsize_counter=0;
+
+struct position {
+   uint8_t id;
+   float x;
+   float y;
+  } position;
+struct position *pos, estimated_pos;
+
+#define NBR_ANCHOR 3
+struct anchor anchor_table[NBR_ANCHOR]; int anchor_counter=0;
+
+/* This #define defines the maximum amount of neighbors we can remember. */
+#define MAX_NEIGHBORS 16
+
+/* This MEMB() definition defines a memory pool from which we allocate
+   neighbor entries. */
+MEMB(neighbors_memb, struct neighbor, MAX_NEIGHBORS);
+
+/* The neighbors_list is a Contiki list that holds the neighbors we
+   have seen thus far. */
+LIST(neighbors_list);
+
+/* These hold the broadcast and unicast structures, respectively. */
+static struct broadcast_conn broadcast;
+static struct unicast_conn unicast;
+
+/*---------------------------------------------------------------------------*/
+/* We first declare our two processes. */
+PROCESS(broadcast_process, "Broadcast process");
+PROCESS(flooding_process, "Flooding Process");
+PROCESS(unicast_process, "Unicast process");
+PROCESS(blink_process, "LED blink process");
+PROCESS(display_process, "Display process");
+PROCESS(trilateral_process, "trilateral process");
+
+/* The AUTOSTART_PROCESSES() definition specifices what processes to
+   start when this module is loaded. We put both our processes
+   there. */
+AUTOSTART_PROCESSES(&broadcast_process, &unicast_process);
+/*---------------------------------------------------------------------------*/
+/* This function is called whenever a broadcast message is received. */
+static void broadcast_recv(struct broadcast_conn *c, const rimeaddr_t *from)
+{ 
+   struct neighbor *n; 
+   anc = packetbuf_dataptr();
+   process_start(&blink_process, NULL);
+  
+    /*  Registration of Anchor information in the Anchors table */ 
+  if(anc->type==0){
+       int i=0; 
+       for(i=0;i<anchor_counter;i++){
+	  if (anc->id==anchor_table[i].id){
+             //anchor_table[i].Av_Hop_Size=0;
+	     if(anc->hop_count <anchor_table[i].hop_count){
+		anchor_table[i].hop_count=anc->hop_count; 
+		if(anc->id==1){
+			rimeaddr_copy(&next_hop, from);
+			nbr_hop=anc->hop_count;
+		}
+		process_start(&flooding_process, NULL);             
+	     }
+	     else{
+                 anc->hop_count=anchor_table[i].hop_count;		 
+             }
+	   //process_start(&flooding_process, NULL);		   
+	   break;              
+	  }
+       } 
+       if(i==anchor_counter){
+  	  anchor_table[anchor_counter]=*anc; anchor_counter++;
+		if(anc->id==1){
+			rimeaddr_copy(&next_hop, from);
+			nbr_hop=anc->hop_count;
+		}
+process_start(&display_process, NULL);
+          process_start(&flooding_process, NULL);i=0;
+       }
+  }
+  else if(anc->type==1){
+       avh = anc;
+       int i=0; 
+       for(i=0;i<anchor_counter;i++){
+	  if ((avh->id==anchor_table[i].id)&&(anchor_table[i].Av_Hop_Size==0)){
+		anchor_table[i].Av_Hop_Size=avh->Av_Hop_Size;    
+		avhopsize_counter++;
+//printf("%u\n",avhopsize_counter);  
+process_start(&display_process, NULL);      
+	   process_start(&flooding_process, NULL);		   
+	   break;              
+	  }
+       } 
+   }
+    /*************************************************************/
+}
+
+/* This is where we define what function to be called when a broadcast
+   is received. We pass a pointer to this structure in the
+   broadcast_open() call below. */
+static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
+/*---------------------------------------------------------------------------*/
+/* This function is called for every incoming unicast packet. */
+static void
+recv_uc(struct unicast_conn *c, const rimeaddr_t *from)
+{
+   pos= packetbuf_dataptr();
+   packetbuf_copyfrom(pos, sizeof(struct position));
+   unicast_send(&unicast, &next_hop);
+}
+static const struct unicast_callbacks unicast_callbacks = {recv_uc};
+/*---------------------------------------------------------------------------*/
+PROCESS_THREAD(broadcast_process, ev, data)
+{
+  node_id_burn(12);
+  cc2420_set_txpower(2);
+
+  PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
+  PROCESS_BEGIN();
+  broadcast_open(&broadcast, 129, &broadcast_call);
+  
+  PROCESS_END();
+}
+/*---------------------------------------------------------------------------*/
+PROCESS_THREAD(flooding_process, ev, data)
+{
+  static struct etimer et1;
+  
+  PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
+  PROCESS_BEGIN();
+  broadcast_open(&broadcast, 129, &broadcast_call);
+  
+  etimer_set(&et1, (CLOCK_SECOND)+random_rand() % (CLOCK_SECOND)*10);
+  PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et1));
+
+  if(anc->type==0){
+     anc->hop_count++;
+     packetbuf_copyfrom(*(&anc), sizeof(struct anchor));
+     broadcast_send(&broadcast);
+  }
+  else if(anc->type==1){
+     packetbuf_copyfrom(*(&avh), sizeof(struct AncAvHopSize));
+     broadcast_send(&broadcast);
+  }
+
+ if(avhopsize_counter==NBR_ANCHOR-1){avhopsize_counter++;
+//printf("%u.%u, %u\n",(next_hop.u8[0]),(next_hop.u8[1]),nbr_hop);
+ etimer_set(&et1, (CLOCK_SECOND)*1+random_rand() % (CLOCK_SECOND)*10);
+     //process_start(&display_process, NULL);
+     process_start(&trilateral_process, NULL);
+ }
+  PROCESS_END();
+}
+/*---------------------------------------------------------------------------*/
+PROCESS_THREAD(unicast_process, ev, data)
+{
+  PROCESS_EXITHANDLER(unicast_close(&unicast);)   
+  PROCESS_BEGIN();
+  unicast_open(&unicast, 146, &unicast_callbacks);
+
+  PROCESS_END();
+}
+/*---------------------------------------------------------------------------*/
+ PROCESS_THREAD(blink_process, ev, data)
+ {
+     static struct etimer timer;
+     PROCESS_BEGIN(); 
+         // update the LEDs
+         leds_on(LEDS_GREEN);
+	 // we set the timer from here every time
+         etimer_set(&timer, CLOCK_SECOND/4);
+         // and wait until the vent we receive is the one we're waiting for
+         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+	 leds_off(LEDS_GREEN);	 	 
+     PROCESS_END();
+ }
+/*---------------------------------------------------------------------------*/
+ PROCESS_THREAD(display_process, ev, data)
+ {
+     PROCESS_BEGIN(); 
+  /***************** Viewing the neighbors_list ****************** /
+  for(n = list_head(neighbors_list); n != NULL; n = list_item_next(n)) {
+    printf("%u.%u/",*(&n->addr.u8[0]),*(&n->addr.u8[1]));
+  }printf("\n");
+  /***************************************************************/
+  /***************** Viewing the Anchors table ******************/
+  int j=0;
+  for(j=0;j<anchor_counter;j++) {
+     int dec = anchor_table[j].Av_Hop_Size;
+     float frac = anchor_table[j].Av_Hop_Size - dec;
+    printf("Anc=%u,Nbr_hop=%u,Av_Hop_Size=%d.%02d/",anchor_table[j].id,anchor_table[j].hop_count,dec,abs((int)(frac * 100)));
+  }printf("\n");
+  /***************************************************************/	 
+     PROCESS_END();
+ }
+/*---------------------------------------------------------------------------*/
+ PROCESS_THREAD(trilateral_process, ev, data)
+ {
+       static struct etimer et1;
+
+  PROCESS_EXITHANDLER(unicast_close(&unicast);)
+  PROCESS_BEGIN();
+  unicast_open(&unicast, 146, &unicast_callbacks);
+
+//printf("Trilateral_start\n");
+  /****************Calcule Matrix A:(NBR_ANCHOR-1*2)****************/
+  int i,j; float **A;
+  A=(float**)malloc((NBR_ANCHOR-1)*sizeof(float*));
+  for (i=0;i<NBR_ANCHOR-1;i++)
+     A[i]=(float*)malloc(2*sizeof(float));
+
+  for(i=0;i<NBR_ANCHOR-1;i++)
+     for(j=0;j<2;j++)
+	if (j==0)
+	  *(*(A+i)+j)=-2*(anchor_table[i].x-anchor_table
+			[NBR_ANCHOR-1].x);
+	else
+ 	  *(*(A+i)+j)=-2*(anchor_table[i].y-anchor_table
+			[NBR_ANCHOR-1].y);
+
+  /****************Calcule Matrix B:(nbr_anc-1*1)*****************/
+  float **B;
+  B=(float**)malloc((NBR_ANCHOR-1)*sizeof(float*));
+  for (i=0;i<NBR_ANCHOR-1;i++)
+    B[i]=(float*)malloc(1*sizeof(float));
+
+  for(i=0;i<NBR_ANCHOR-1;i++)
+	    *(*(B+i)+0)= pow(anchor_table[i].Av_Hop_Size*anchor_table
+	              [i].hop_count,2)-
+		     pow(anchor_table[NBR_ANCHOR-1].Av_Hop_Size*anchor_table
+		      [NBR_ANCHOR-1].hop_count,2)-
+		     pow(anchor_table[i].x,2)+pow(anchor_table
+   		      [NBR_ANCHOR-1].x,2)-
+		     pow(anchor_table[i].y,2)+pow(anchor_table
+		      [NBR_ANCHOR-1].y,2);
+
+ /****************Calcule Transpose A: A_T(2*nbr_anc-1)*****************/
+ float **A_T;
+ A_T=matrix_transpose(A,NBR_ANCHOR-1,2);
+
+ /****************Calcule A_T*A:ATA(2*2)*****************/
+ float **ATA;
+ ATA= matrix_multiplication(A_T,2,NBR_ANCHOR-1,A,2);
+	
+ /****************Calcule ATA inverse:ATA_Inv(2*2)*****************/
+ float **ATA_Inv;
+ ATA_Inv=matrix_inverse(ATA,2);
+
+ /****************Calcule ATA_Inv*A_T: ATA_AT(2*nbr_anc-1)*****************/
+ float **ATA_AT;
+ ATA_AT=matrix_multiplication(ATA_Inv, 2, 2, A_T, NBR_ANCHOR-1);
+
+ /****************Calcule ATA_AT*B: P(2*1)*****************/
+ float **P;        
+ P=matrix_multiplication(ATA_AT, 2, NBR_ANCHOR-1, B, 1);
+leds_on(LEDS_RED);
+	 int dec_x = *(*(P+0)+0); float frac_x = *(*(P+0)+0) - dec_x;  
+	 int dec_y = *(*(P+1)+0); float frac_y = *(*(P+1)+0) - dec_y;
+
+printf("Located/%u:x=%d.%02d;y=%d.%02d\n",node_id,dec_x,abs((int)(frac_x*100)),dec_y,abs((int)(frac_y*100)));
+//printf("%u.%u, %u\n",(next_hop.u8[0]),(next_hop.u8[1]),nbr_hop);
+  
+  estimated_pos.id=node_id;
+  estimated_pos.x=*(*(P+0)+0); estimated_pos.y=*(*(P+1)+0);
+
+  etimer_set(&et1,(CLOCK_SECOND)*(20+nbr_hop)+random_rand() % (CLOCK_SECOND)*nbr_hop);
+  PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et1));
+  packetbuf_copyfrom(&estimated_pos, sizeof(struct position));
+  unicast_send(&unicast, &next_hop);
+
+
+     PROCESS_END();
+ }
+/*---------------------------------------------------------------------------*/
