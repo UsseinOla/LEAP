@@ -44,7 +44,6 @@ float y;
 struct exploit *received_exploit;
 
 /*********************************************************************************************************/
-/********************************************/
 float calcuh(float x){
 int acc=25;
 if(x<0){
@@ -99,7 +98,6 @@ cuts=100;
 finalanswer=(sqrt(3)*density)*solve_integral(initial,tck,density,cuts);
 return finalanswer;
 }
-/*---------------------------------------------------------------------------*/
 
 /*****************************************************************************************************************/
 static struct broadcast_conn broadcast;
@@ -155,10 +153,8 @@ nbr_hop=received_data_mote->dk;
 process_start(&flooding_process, NULL);i=0; 
 }
 }
-/*************************************************************/
 }
 /**************************************************************************************************/
-/*---------------------------------------------------------------------------*/
 static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
 static void recv_uc(struct unicast_conn *c, const rimeaddr_t *from)
 {
@@ -175,7 +171,6 @@ unicast_send(&unicast, &next_hop);
 }
 }
 static const struct unicast_callbacks unicast_callbacks = {recv_uc};
-/*---------------------------------------------------------------------------*/
 /*--------------------------unicast_process-----------------------------------------------*/
 PROCESS_THREAD(unicast_process, ev, data)
 {
@@ -244,7 +239,6 @@ static struct etimer et1;
 PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 PROCESS_BEGIN();
 broadcast_open(&broadcast, 129, &broadcast_call);
- /***************************************************************************/
 if (received_data_mote->type==0){
 	process_start(&display_process, NULL);
 etimer_set(&et1, (CLOCK_SECOND)+random_rand() % (CLOCK_SECOND));
