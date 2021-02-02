@@ -10,10 +10,9 @@
 #include <math.h>
 #include "dev/cc2420.h"
 #include "dev/cc2420_const.h"
-/****************************/
 #include <stdlib.h>
-#include <string.h> //for free() functions
-/****************************/
+#include <string.h> 
+
 #define anchors_num 3
 #define MAX_NEIGHBORS 16
 
@@ -32,11 +31,8 @@ float  y;
 uint8_t  dk;
 uint8_t tck;
 }database; 
-
 struct database *received_data_mote;
 struct database routing_table[anchors_num];
-
-
 
 struct location {
 uint8_t id;
@@ -47,7 +43,6 @@ struct location *received_location, estimated_received_location;
 
 int counter=0;
 int ids_counter=0;
-
 
 /************************************************************************************/
 float calcuh(float x){
@@ -157,13 +152,9 @@ ids_counter++;
 if(received_data_mote->id==1){
 rimeaddr_copy(&next_hop, from);
 nbr_hop=received_data_mote->dk;    }
-//process_start(&display_process, NULL);
 process_start(&flooding_process, NULL);i=0;
 }
-
 }
-
-/*************************************************************/
 }
 
 /* This is where we define what function to be called when a broadcast
@@ -224,7 +215,6 @@ PROCESS_EXITHANDLER(unicast_close(&unicast);)
 PROCESS_BEGIN();
 unicast_open(&unicast, 146, &unicast_callbacks);
 /****************Calcule Matrix A:(anchors_num-1*2)****************/
-/****************Calcule Matrix A:(anchors_num-1*2)****************/
 
  int l=0,l1=0;
 int dec_x; float frac_x;
@@ -250,24 +240,9 @@ A=(float**)malloc((anchors_num-1)*sizeof(float*));
   
   for(i=0;i<anchors_num-1;i++)
   {
-    /*dec_x =routing_table[i].dk;  frac_x = routing_table[i].dk - dec_x; 
-printf("routing_table[i].dk=%d.%04d \n",dec_x,abs((int)(frac_x*10000)));*/
-
   *(*(B+i)+0)= pow(routing_table[i].dk,2)-pow(routing_table[anchors_num-1].dk,2)-
  pow(routing_table[i].x,2)+pow(routing_table[anchors_num-1].x,2)-pow(routing_table[i].y,2)+pow(routing_table[anchors_num-1].y,2);
   }
-
-/*
-printf("B\n");
-  for(l=0;l<2;l++){
-    for(l1=0;l1<1;l1++){
-dec_x =B[l][l1];  frac_x = B[l][l1] - dec_x; 
-printf("%d.%04d ",dec_x,abs((int)(frac_x*10000)));
-}
-printf("\n");
-  }*/
-
-
 
  /****************Calcule Transpose A: A_T(2*nbr_anc-1)*****************/
  float **A_T;
