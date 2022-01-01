@@ -17,13 +17,16 @@
 #define MAX_NEIGHBORS 16
 
 /* This structure holds information about neighbors. */
-struct neighbor {
+struct neighbor
+{
 struct neighbor *next;
 rimeaddr_t addr;
 };
 rimeaddr_t next_hop; uint8_t nbr_hop;
+
 /* This structure holds information about database. */
-struct database {
+struct database 
+{
 uint8_t type;
 uint8_t  id;
 float  x;
@@ -34,7 +37,8 @@ uint8_t tck;
 struct database *received_data_mote;
 struct database routing_table[anchors_num];
 
-struct location {
+struct location
+{
 uint8_t id;
 float x;
 float y;
@@ -45,25 +49,28 @@ int counter=0;
 int ids_counter=0;
 
 /************************************************************************************/
-float calcuh(float x){
+float calcuh(float x)
+{
 int acc=25;
 if(x<0){
 x=(-1)*x;
 float ans=1;
 float temp=1;
 int i;
-for(i=1;i<=acc;i++){
+for(i=1;i<=acc;i++)
+{
 temp=(temp*x)/i;
 ans=ans + temp;
 }   
 return 1/ans;
-}
-    
-else{
+}    
+else
+{
 float ans=1;
 float temp=1;
 int i;
-for(i=1;i<=acc;i++){
+for(i=1;i<=acc;i++)
+{
 temp=(temp*x)/i;
 ans=ans + temp;
 }   
@@ -73,24 +80,32 @@ return ans;
 
 /**************************************************************************************/
 
-float FX(float x,float tck,float density){
+float FX(float x,float tck,float density)
+{
 float function=0;
 function=pow(x,2)*calcuh( (-density*M_PI*(pow(tck,2)-pow(x,2)) )/3 );
 return function;
 }
-float solve_integral(float initial, float tck,float density,float cuts){
+
+float solve_integral(float initial, float tck,float density,float cuts)
+{
 float  sumation=0;int i=0;
 float delta, xi, value_i;
- delta=((tck-initial)/cuts);
- for(i=0;i<=cuts;i++){
+delta=((tck-initial)/cuts);
+    
+ for(i=0;i<=cuts;i++)
+ {
  xi=(initial+delta*i); 
  value_i=delta*(FX(xi,tck,density));
  sumation=sumation+(value_i);
 }  
+    
 return sumation;
 }
+
 /***********************************************************/
-float gethp(float tck){
+float gethp(float tck)
+{
 float cuts;
 float initial=0;
 float density=0.08;
@@ -99,8 +114,8 @@ cuts=100;
 finalanswer=(sqrt(3)*density)*solve_integral(initial,tck,density,cuts);
 return finalanswer;
 }
-/*---------------------------------------------------------------------------*/
 
+/*---------------------------------------------------------------------------*/
 static struct broadcast_conn broadcast;
 static struct unicast_conn unicast;
 
@@ -117,31 +132,39 @@ PROCESS(trilateral_process, "trilateral process");
    start when this module is loaded. We put both our processes
    there. */
 AUTOSTART_PROCESSES(&broadcast_process, &unicast_process);
+
 /*---------------------------------------------------------------------------*/
 /* This function is called whenever a broadcast message is received. */
 static void broadcast_recv(struct broadcast_conn *c, const rimeaddr_t *from)
 { 
 received_data_mote = packetbuf_dataptr();
 /*  Registration of database information in the databases table */ 
-if(received_data_mote->type==0){
+if(received_data_mote->type==0)
+{
 int i=0; 
-for(i=0;i<counter;i++){
-if (received_data_mote->id==routing_table[i].id){
-if(received_data_mote->dk <routing_table[i].dk){
+for(i=0;i<counter;i++)
+{
+if (received_data_mote->id==routing_table[i].id)
+{
+if(received_data_mote->dk <routing_table[i].dk)
+{
 routing_table[i].dk=received_data_mote->dk; 
-if(received_data_mote->id==1){
+if(received_data_mote->id==1)
+{
 rimeaddr_copy(&next_hop, from);
 nbr_hop=received_data_mote->dk;
 }
 process_start(&flooding_process, NULL);             
 }
-else{
+else
+{
 received_data_mote->dk=routing_table[i].dk;     
 }
 break;              
 }
 } 
-if(i==counter){
+if(i==counter)
+{
 routing_table[counter]=*received_data_mote;
 received_data_mote->dk +=gethp((float)received_data_mote->tck);
 routing_table[counter].dk=received_data_mote->dk;
@@ -149,9 +172,11 @@ routing_table[counter].tck=10;
 counter++;
 ids_counter++;
 
-if(received_data_mote->id==1){
+if(received_data_mote->id==1)
+{
 rimeaddr_copy(&next_hop, from);
-nbr_hop=received_data_mote->dk;    }
+nbr_hop=received_data_mote->dk;
+}
 process_start(&flooding_process, NULL);i=0;
 }
 }
@@ -161,6 +186,7 @@ process_start(&flooding_process, NULL);i=0;
    is received. We pass a pointer to this structure in the
    broadcast_open() call below. */
 static const struct broadcast_callbacks broadcast_call = {broadcast_recv};
+
 /*---------------------------------------------------------------------------*/
 /* This function is called for every incoming unicast packet. */
 static void
@@ -171,6 +197,7 @@ packetbuf_copyfrom(received_location, sizeof(struct location));
 unicast_send(&unicast, &next_hop);
 }
 static const struct unicast_callbacks unicast_callbacks = {recv_uc};
+
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(broadcast_process, ev, data)
 {
@@ -189,9 +216,11 @@ static struct etimer et1;
 PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
 PROCESS_BEGIN();
 broadcast_open(&broadcast, 129, &broadcast_call);
-if(received_data_mote->type==0){
+if(received_data_mote->type==0)
+{
 received_data_mote->dk++;
-if(ids_counter==3){
+if(ids_counter==3)
+{
 etimer_set(&et1, (CLOCK_SECOND)*2+random_rand() % (CLOCK_SECOND)*2);
 PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et1));   
 process_start(&trilateral_process, NULL);
@@ -199,6 +228,7 @@ process_start(&trilateral_process, NULL);
 }
 PROCESS_END();
 }
+
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(unicast_process, ev, data)
 {
@@ -214,12 +244,12 @@ static struct etimer et1;
 PROCESS_EXITHANDLER(unicast_close(&unicast);)
 PROCESS_BEGIN();
 unicast_open(&unicast, 146, &unicast_callbacks);
+     
 /****************Calcule Matrix A:(anchors_num-1*2)****************/
-
  int l=0,l1=0;
-int dec_x; float frac_x;
-
+ int dec_x; float frac_x;
  int i,j; float **A;
+     
 A=(float**)malloc((anchors_num-1)*sizeof(float*));
   for (i=0;i<anchors_num-1;i++)
      A[i]=(float*)malloc(3*sizeof(float));
@@ -230,7 +260,6 @@ A=(float**)malloc((anchors_num-1)*sizeof(float*));
     *(*(A+i)+j)=-2*(routing_table[i].x-routing_table[anchors_num-1].x);
   else if (j==1)
     *(*(A+i)+j)=-2*(routing_table[i].y-routing_table[anchors_num-1].y);
-
 
 /****************Calcule Matrix B:(nbr_received_data_mote-1*1)*****************/
    float **B;float eval=0;
@@ -263,7 +292,6 @@ A=(float**)malloc((anchors_num-1)*sizeof(float*));
  /****************Calcule ATA_AT*B: P(2*1)*****************/
  float **P;        
  P=matrix_multiplication(ATA_AT, 2, anchors_num-1, B, 1);
-
 estimated_received_location.id=node_id;
 estimated_received_location.x=*(*(P+0)+0); estimated_received_location.y=*(*(P+1)+0);
 leds_on(LEDS_GREEN);
@@ -273,26 +301,23 @@ leds_off(LEDS_GREEN);
 packetbuf_copyfrom(&estimated_received_location, sizeof(struct location));
 unicast_send(&unicast, &next_hop);
 
-
-
-
 for(i=0;i<anchors_num;i++)
 free(A[i]);
 free(A);
 
-
 for(i=0;i<anchors_num;i++)
 free(B[i]);
 free(B);
-
 free(A_T);
 free(ATA);
 free(ATA_Inv);
 free(ATA_AT);
 free(P);
+     
 PROCESS_EXIT();
 PROCESS_END();
  }
+
 /*---------------------------------------------------------------------------*/
  PROCESS_THREAD(blink_process, ev, data)
  {
@@ -304,15 +329,16 @@ PROCESS_END();
  leds_off(LEDS_GREEN);     
  PROCESS_END();
  }
+
 /*---------------------------------------------------------------------------*/
  PROCESS_THREAD(display_process, ev, data)
 {
 PROCESS_BEGIN(); 
 int j=0;
-for(j=0;j<counter;j++) {
+for(j=0;j<counter;j++) 
+{
 printf("anchor=%u,hops=%u",routing_table[j].id,routing_table[j].dk);
 }
 printf("\n");
 PROCESS_END();
 }
-/*---------------------------------------------------------------------------*/
